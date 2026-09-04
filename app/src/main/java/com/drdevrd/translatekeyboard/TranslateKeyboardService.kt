@@ -1,5 +1,7 @@
 package com.drdevrd.translatekeyboard
 
+import android.content.ClipboardManager
+import android.content.Context
 import android.inputmethodservice.InputMethodService
 import android.inputmethodservice.Keyboard
 import android.inputmethodservice.KeyboardView
@@ -28,6 +30,7 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
     private lateinit var insertButton: Button
     private lateinit var langToggleButton: Button
     private lateinit var translateNowButton: Button
+    private lateinit var reverseTranslateButton: Button
     private lateinit var dismissButton: Button
 
     private lateinit var autocorrect: AutocorrectEngine
@@ -42,17 +45,21 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
     private val TRANSLATE_DEBOUNCE_MS = 800L
 
     private var targetLang = "hi" // "hi" = Hindi, "ta" = Tamil
+    private var liveTranslateEnabled = true
     private var lastTranslation: TranslationResult? = null
 
     override fun onCreate() {
         super.onCreate()
         autocorrect = AutocorrectEngine(this)
+        loadPrefs()
+    }
+
+    private fun loadPrefs() {
         val prefs = getSharedPreferences(Prefs.NAME, MODE_PRIVATE)
         targetLang = prefs.getString(Prefs.TARGET_LANG, "hi") ?: "hi"
+        liveTranslateEnabled = prefs.getBoolean(Prefs.LIVE_TRANSLATE, true)
         val key = prefs.getString(Prefs.API_KEY, "") ?: ""
-        if (key.isNotBlank()) {
-            openAi = OpenAiTranslator(key)
-        }
+        openAi = if (key.isNotBlank()) OpenAiTranslator(key) else null
     }
 
     override fun onCreateInputView(): View {
@@ -68,6 +75,7 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
         insertButton = container.findViewById(R.id.insertButton)
         langToggleButton = container.findViewById(R.id.langToggleButton)
         translateNowButton = container.findViewById(R.id.translateNowButton)
+        reverseTranslateButton = container.findViewById(R.id.reverseTranslateButton)
         dismissButton = container.findViewById(R.id.dismissButton)
 
         qwertyKeyboard = Keyboard(this, R.xml.keyboard_qwerty)
@@ -89,6 +97,8 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
             performTranslate()
         }
 
+        reverseTranslateButton.setOnClickListener { translateFromClipboard() }
+
         insertButton.setOnClickListener { insertTranslation() }
         dismissButton.setOnClickListener { translationPanel.visibility = View.GONE }
 
@@ -100,9 +110,7 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
         currentWord.clear()
         suggestionScroll.visibility = View.GONE
         translationPanel.visibility = View.GONE
-        val prefs = getSharedPreferences(Prefs.NAME, MODE_PRIVATE)
-        val key = prefs.getString(Prefs.API_KEY, "") ?: ""
-        openAi = if (key.isNotBlank()) OpenAiTranslator(key) else null
+        loadPrefs()
     }
 
     private fun updateLangButtonLabel() {
@@ -125,12 +133,12 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
                 }
                 ic.deleteSurroundingText(1, 0)
                 refreshSuggestions()
-                scheduleTranslate()
+                if (liveTranslateEnabled) scheduleTranslate()
             }
             Keyboard.KEYCODE_DONE -> {
                 finishWord(ic)
                 ic.commitText("\n", 1)
-                performTranslate()
+                if (liveTranslateEnabled) performTranslate()
             }
             -2 -> { // ABC / 123 toggle
                 usingSymbols = !usingSymbols
@@ -143,12 +151,12 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
             32 -> { // space
                 finishWord(ic)
                 ic.commitText(" ", 1)
-                scheduleTranslate()
+                if (liveTranslateEnabled) scheduleTranslate()
             }
             10 -> { // newline via symbol keyboard, treat like done
                 finishWord(ic)
                 ic.commitText("\n", 1)
-                performTranslate()
+                if (liveTranslateEnabled) performTranslate()
             }
             else -> {
                 var code = primaryCode.toChar()
@@ -162,10 +170,12 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
                 } else {
                     // punctuation ends the word/sentence
                     finishWord(ic)
-                    if (code == '.' || code == '?' || code == '!') {
-                        performTranslate()
-                    } else {
-                        scheduleTranslate()
+                    if (liveTranslateEnabled) {
+                        if (code == '.' || code == '?' || code == '!') {
+                            performTranslate()
+                        } else {
+                            scheduleTranslate()
+                        }
                     }
                 }
             }
@@ -215,10 +225,10 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
         currentWord.clear()
         currentWord.append(word)
         suggestionScroll.visibility = View.GONE
-        scheduleTranslate()
+        if (liveTranslateEnabled) scheduleTranslate()
     }
 
-    // ---- Translation ----
+    // ---- Forward translation (English typed -> Hindi/Tamil) ----
 
     private fun scheduleTranslate() {
         translateRunnable?.let { mainHandler.removeCallbacks(it) }
@@ -285,6 +295,57 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
         ic.commitText(result.translation + " ", 1)
         translationPanel.visibility = View.GONE
         currentWord.clear()
+    }
+
+    // ---- Reverse translation (copied Hindi/Tamil/Hinglish reply -> English) ----
+
+    private fun translateFromClipboard() {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = clipboard.primaryClip
+        val text = clip?.getItemAt(0)?.coerceToText(this)?.toString()?.trim().orEmpty()
+
+        if (text.isEmpty()) {
+            translationPanel.visibility = View.VISIBLE
+            translationText.text = ""
+            transliterationText.text = ""
+            explanationText.text = "Copy the message you received first, then tap this button."
+            return
+        }
+
+        val client = openAi
+        if (client == null) {
+            translationPanel.visibility = View.VISIBLE
+            translationText.text = ""
+            transliterationText.text = ""
+            explanationText.text = "Set your OpenAI API key in the Translate Keyboard app first."
+            return
+        }
+
+        translationPanel.visibility = View.VISIBLE
+        translationText.text = "Translating..."
+        transliterationText.text = ""
+        explanationText.text = ""
+        lastTranslation = null // reverse result isn't insertable as a target-language translation
+
+        client.reverseTranslateAsync(
+            text = text,
+            onResult = { result ->
+                mainHandler.post {
+                    if (result != null) {
+                        translationText.text = result.englishTranslation
+                        transliterationText.text = ""
+                        explanationText.text = if (result.detectedLanguage.isNotBlank())
+                            "Detected: ${result.detectedLanguage}" else ""
+                    }
+                }
+            },
+            onError = { message ->
+                mainHandler.post {
+                    translationText.text = ""
+                    explanationText.text = "Translation error: $message"
+                }
+            }
+        )
     }
 
     // ---- Unused listener callbacks ----

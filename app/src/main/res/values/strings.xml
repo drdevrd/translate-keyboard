@@ -5,9 +5,12 @@
     <string name="translate_now">Translate now</string>
     <string name="insert_translation">Insert</string>
     <string name="dismiss">Dismiss</string>
+    <string name="from_clipboard">\u2192 English</string>
     <string name="settings_title">Translate Keyboard Setup</string>
     <string name="api_key_hint">OpenAI API key (sk-...)</string>
     <string name="save">Save</string>
     <string name="saved">Saved.</string>
-    <string name="setup_instructions">1. Paste your OpenAI API key below and tap Save.\n2. Go to Settings \u2192 System \u2192 Languages &amp; input \u2192 On-screen keyboard \u2192 Manage keyboards, and enable Translate Keyboard.\n3. Switch to it from any text field using the keyboard-switch icon or the globe key on the keyboard itself.</string>
+    <string name="live_translate_label">Live translate while typing</string>
+    <string name="live_translate_hint">When on, translation updates automatically as you pause typing or hit . ? ! \u2014 in addition to the manual \"Translate now\" button. When off, only the button triggers it.</string>
+    <string name="setup_instructions">1. Paste your OpenAI API key below, choose live-translate on/off, and tap Save.\n2. Go to Settings \u2192 System \u2192 Languages &amp; input \u2192 On-screen keyboard \u2192 Manage keyboards, and enable Translate Keyboard.\n3. Switch to it from any text field using the keyboard-switch icon or the globe key on the keyboard itself.</string>
 </resources>
