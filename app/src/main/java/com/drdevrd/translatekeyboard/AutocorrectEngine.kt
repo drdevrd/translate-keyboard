@@ -25,8 +25,6 @@ class AutocorrectEngine(context: Context) {
         wordSet = all.toHashSet()
     }
 
-    private val wordSet: HashSet<String>
-
     fun isKnown(word: String): Boolean = wordSet.contains(word.lowercase())
 
     /** Returns up to [max] suggestions ordered by closeness, best first. */
