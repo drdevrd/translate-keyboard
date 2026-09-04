@@ -33,8 +33,18 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
     private lateinit var reverseTranslateButton: Button
     private lateinit var dismissButton: Button
 
+    private lateinit var micButton: Button
+    private lateinit var copyButton: Button
+    private lateinit var pasteButton: Button
+    private lateinit var selectAllButton: Button
+    private lateinit var clearAllButton: Button
+    private lateinit var undoButton: Button
+    private lateinit var redoButton: Button
+
     private lateinit var autocorrect: AutocorrectEngine
     private var openAi: OpenAiTranslator? = null
+    private var whisper: WhisperTranscriber? = null
+    private lateinit var voiceDictation: VoiceDictation
 
     private var caps = false
     private var usingSymbols = false
@@ -48,9 +58,16 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
     private var liveTranslateEnabled = true
     private var lastTranslation: TranslationResult? = null
 
+    // ---- Undo/redo ----
+    private val undoStack = ArrayDeque<String>()
+    private val redoStack = ArrayDeque<String>()
+    private var lastActionWasDelete = false
+    private val MAX_HISTORY = 50
+
     override fun onCreate() {
         super.onCreate()
         autocorrect = AutocorrectEngine(this)
+        voiceDictation = VoiceDictation(cacheDir)
         loadPrefs()
     }
 
@@ -60,6 +77,7 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
         liveTranslateEnabled = prefs.getBoolean(Prefs.LIVE_TRANSLATE, true)
         val key = prefs.getString(Prefs.API_KEY, "") ?: ""
         openAi = if (key.isNotBlank()) OpenAiTranslator(key) else null
+        whisper = if (key.isNotBlank()) WhisperTranscriber(key) else null
     }
 
     override fun onCreateInputView(): View {
@@ -77,6 +95,14 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
         translateNowButton = container.findViewById(R.id.translateNowButton)
         reverseTranslateButton = container.findViewById(R.id.reverseTranslateButton)
         dismissButton = container.findViewById(R.id.dismissButton)
+
+        micButton = container.findViewById(R.id.micButton)
+        copyButton = container.findViewById(R.id.copyButton)
+        pasteButton = container.findViewById(R.id.pasteButton)
+        selectAllButton = container.findViewById(R.id.selectAllButton)
+        clearAllButton = container.findViewById(R.id.clearAllButton)
+        undoButton = container.findViewById(R.id.undoButton)
+        redoButton = container.findViewById(R.id.redoButton)
 
         qwertyKeyboard = Keyboard(this, R.xml.keyboard_qwerty)
         symbolsKeyboard = Keyboard(this, R.xml.keyboard_symbols)
@@ -98,9 +124,16 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
         }
 
         reverseTranslateButton.setOnClickListener { translateFromClipboard() }
-
         insertButton.setOnClickListener { insertTranslation() }
         dismissButton.setOnClickListener { translationPanel.visibility = View.GONE }
+
+        micButton.setOnClickListener { onMicTapped() }
+        copyButton.setOnClickListener { copyAll() }
+        pasteButton.setOnClickListener { pasteClipboard() }
+        selectAllButton.setOnClickListener { selectAll() }
+        clearAllButton.setOnClickListener { clearAll() }
+        undoButton.setOnClickListener { undo() }
+        redoButton.setOnClickListener { redo() }
 
         return container
     }
@@ -110,7 +143,18 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
         currentWord.clear()
         suggestionScroll.visibility = View.GONE
         translationPanel.visibility = View.GONE
+        undoStack.clear()
+        redoStack.clear()
+        lastActionWasDelete = false
         loadPrefs()
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        super.onFinishInputView(finishingInput)
+        if (voiceDictation.isRecording) {
+            voiceDictation.stopRecording()
+            micButton.text = getString(R.string.mic_icon)
+        }
     }
 
     private fun updateLangButtonLabel() {
@@ -128,6 +172,8 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
                 keyboardView.invalidateAllKeys()
             }
             Keyboard.KEYCODE_DELETE -> {
+                if (!lastActionWasDelete) snapshotForUndo(ic)
+                lastActionWasDelete = true
                 if (currentWord.isNotEmpty()) {
                     currentWord.deleteCharAt(currentWord.length - 1)
                 }
@@ -136,6 +182,7 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
                 if (liveTranslateEnabled) scheduleTranslate()
             }
             Keyboard.KEYCODE_DONE -> {
+                snapshotForUndo(ic)
                 finishWord(ic)
                 ic.commitText("\n", 1)
                 if (liveTranslateEnabled) performTranslate()
@@ -149,16 +196,19 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
                 switchToNextInputMethod(false)
             }
             32 -> { // space
+                snapshotForUndo(ic)
                 finishWord(ic)
                 ic.commitText(" ", 1)
                 if (liveTranslateEnabled) scheduleTranslate()
             }
             10 -> { // newline via symbol keyboard, treat like done
+                snapshotForUndo(ic)
                 finishWord(ic)
                 ic.commitText("\n", 1)
                 if (liveTranslateEnabled) performTranslate()
             }
             else -> {
+                lastActionWasDelete = false
                 var code = primaryCode.toChar()
                 if (Character.isLetter(code) && caps) {
                     code = Character.toUpperCase(code)
@@ -169,6 +219,7 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
                     refreshSuggestions()
                 } else {
                     // punctuation ends the word/sentence
+                    snapshotForUndo(ic)
                     finishWord(ic)
                     if (liveTranslateEnabled) {
                         if (code == '.' || code == '?' || code == '!') {
@@ -220,6 +271,7 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
 
     private fun replaceCurrentWord(word: String) {
         val ic = currentInputConnection ?: return
+        snapshotForUndo(ic)
         ic.deleteSurroundingText(currentWord.length, 0)
         ic.commitText(word, 1)
         currentWord.clear()
@@ -288,6 +340,7 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
     private fun insertTranslation() {
         val result = lastTranslation ?: return
         val ic = currentInputConnection ?: return
+        snapshotForUndo(ic)
         val sentence = currentSentence()
         if (sentence.isNotEmpty()) {
             ic.deleteSurroundingText(sentence.length, 0)
@@ -346,6 +399,123 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
                 }
             }
         )
+    }
+
+    // ---- Voice dictation (Whisper) ----
+
+    private fun onMicTapped() {
+        if (voiceDictation.isRecording) {
+            val file = voiceDictation.stopRecording()
+            micButton.text = getString(R.string.mic_icon)
+            micButton.isEnabled = false
+            val client = whisper
+            if (file == null || client == null) {
+                micButton.isEnabled = true
+                return
+            }
+            client.transcribeAsync(
+                audioFile = file,
+                onResult = { text ->
+                    mainHandler.post {
+                        micButton.isEnabled = true
+                        if (!text.isNullOrBlank()) {
+                            val ic = currentInputConnection
+                            if (ic != null) {
+                                snapshotForUndo(ic)
+                                ic.commitText(text.trim() + " ", 1)
+                                if (liveTranslateEnabled) scheduleTranslate()
+                            }
+                        }
+                    }
+                },
+                onError = { message ->
+                    mainHandler.post {
+                        micButton.isEnabled = true
+                        translationPanel.visibility = View.VISIBLE
+                        translationText.text = ""
+                        explanationText.text = "Dictation error: $message"
+                    }
+                }
+            )
+        } else {
+            val started = voiceDictation.startRecording()
+            if (started) {
+                micButton.text = getString(R.string.mic_listening)
+            } else {
+                translationPanel.visibility = View.VISIBLE
+                translationText.text = ""
+                transliterationText.text = ""
+                explanationText.text = "Grant microphone permission in the Translate Keyboard app first."
+            }
+        }
+    }
+
+    // ---- Clipboard / edit toolbar ----
+
+    private fun copyAll() {
+        val ic = currentInputConnection ?: return
+        ic.performContextMenuAction(android.R.id.selectAll)
+        ic.performContextMenuAction(android.R.id.copy)
+    }
+
+    private fun pasteClipboard() {
+        val ic = currentInputConnection ?: return
+        snapshotForUndo(ic)
+        ic.performContextMenuAction(android.R.id.paste)
+        if (liveTranslateEnabled) scheduleTranslate()
+    }
+
+    private fun selectAll() {
+        val ic = currentInputConnection ?: return
+        ic.performContextMenuAction(android.R.id.selectAll)
+    }
+
+    private fun clearAll() {
+        val ic = currentInputConnection ?: return
+        snapshotForUndo(ic)
+        ic.deleteSurroundingText(Int.MAX_VALUE, Int.MAX_VALUE)
+        currentWord.clear()
+        suggestionScroll.visibility = View.GONE
+        translationPanel.visibility = View.GONE
+    }
+
+    // ---- Undo / redo (in-keyboard history, not system-level) ----
+
+    private fun getFullText(ic: InputConnection): String {
+        val before = ic.getTextBeforeCursor(10000, 0)?.toString() ?: ""
+        val after = ic.getTextAfterCursor(10000, 0)?.toString() ?: ""
+        return before + after
+    }
+
+    private fun setFullText(ic: InputConnection, text: String) {
+        ic.deleteSurroundingText(Int.MAX_VALUE, Int.MAX_VALUE)
+        ic.commitText(text, 1)
+    }
+
+    private fun snapshotForUndo(ic: InputConnection) {
+        undoStack.addLast(getFullText(ic))
+        if (undoStack.size > MAX_HISTORY) undoStack.removeFirst()
+        redoStack.clear()
+    }
+
+    private fun undo() {
+        val ic = currentInputConnection ?: return
+        if (undoStack.isEmpty()) return
+        redoStack.addLast(getFullText(ic))
+        val prev = undoStack.removeLast()
+        setFullText(ic, prev)
+        currentWord.clear()
+        lastActionWasDelete = false
+    }
+
+    private fun redo() {
+        val ic = currentInputConnection ?: return
+        if (redoStack.isEmpty()) return
+        undoStack.addLast(getFullText(ic))
+        val next = redoStack.removeLast()
+        setFullText(ic, next)
+        currentWord.clear()
+        lastActionWasDelete = false
     }
 
     // ---- Unused listener callbacks ----

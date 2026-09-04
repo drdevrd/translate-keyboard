@@ -12,5 +12,17 @@
     <string name="saved">Saved.</string>
     <string name="live_translate_label">Live translate while typing</string>
     <string name="live_translate_hint">When on, translation updates automatically as you pause typing or hit . ? ! \u2014 in addition to the manual \"Translate now\" button. When off, only the button triggers it.</string>
+    <string name="mic_section_title">Voice dictation</string>
+    <string name="mic_section_hint">The keyboard\'s mic button uses OpenAI Whisper (your API key above) to turn speech into text.</string>
+    <string name="grant_mic_permission">Grant microphone permission</string>
+    <string name="mic_icon">\uD83C\uDFA4</string>
+    <string name="copy_label">Copy</string>
+    <string name="paste_label">Paste</string>
+    <string name="select_all_label">All</string>
+    <string name="clear_all_label">Clear</string>
+    <string name="undo_icon">\u21B6</string>
+    <string name="redo_icon">\u21B7</string>
+    <string name="mic_listening">\u23F9</string>
+    <string name="mic_not_granted">Microphone: not granted yet</string>
     <string name="setup_instructions">1. Paste your OpenAI API key below, choose live-translate on/off, and tap Save.\n2. Go to Settings \u2192 System \u2192 Languages &amp; input \u2192 On-screen keyboard \u2192 Manage keyboards, and enable Translate Keyboard.\n3. Switch to it from any text field using the keyboard-switch icon or the globe key on the keyboard itself.</string>
 </resources>

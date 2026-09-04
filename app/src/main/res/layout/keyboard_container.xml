@@ -5,6 +5,76 @@
     android:orientation="vertical"
     android:background="#D4D6DA">
 
+    <!-- Edit toolbar: mic dictation + clipboard/select/clear/undo/redo -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:scrollbars="none"
+        android:background="#B8BBC1">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/micButton"
+                android:layout_width="52dp"
+                android:layout_height="match_parent"
+                android:textAllCaps="false"
+                android:textSize="16sp"
+                android:text="@string/mic_icon" />
+
+            <Button
+                android:id="@+id/copyButton"
+                android:layout_width="60dp"
+                android:layout_height="match_parent"
+                android:textAllCaps="false"
+                android:textSize="11sp"
+                android:text="@string/copy_label" />
+
+            <Button
+                android:id="@+id/pasteButton"
+                android:layout_width="60dp"
+                android:layout_height="match_parent"
+                android:textAllCaps="false"
+                android:textSize="11sp"
+                android:text="@string/paste_label" />
+
+            <Button
+                android:id="@+id/selectAllButton"
+                android:layout_width="60dp"
+                android:layout_height="match_parent"
+                android:textAllCaps="false"
+                android:textSize="11sp"
+                android:text="@string/select_all_label" />
+
+            <Button
+                android:id="@+id/clearAllButton"
+                android:layout_width="60dp"
+                android:layout_height="match_parent"
+                android:textAllCaps="false"
+                android:textSize="11sp"
+                android:text="@string/clear_all_label" />
+
+            <Button
+                android:id="@+id/undoButton"
+                android:layout_width="48dp"
+                android:layout_height="match_parent"
+                android:textAllCaps="false"
+                android:textSize="16sp"
+                android:text="@string/undo_icon" />
+
+            <Button
+                android:id="@+id/redoButton"
+                android:layout_width="48dp"
+                android:layout_height="match_parent"
+                android:textAllCaps="false"
+                android:textSize="16sp"
+                android:text="@string/redo_icon" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
     <!-- Autocorrect suggestion strip -->
     <HorizontalScrollView
         android:id="@+id/suggestionScroll"
