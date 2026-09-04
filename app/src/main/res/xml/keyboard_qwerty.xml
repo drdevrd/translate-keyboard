@@ -31,8 +31,8 @@
     </Row>
 
     <Row>
-        <Key android:codes="-1" android:keyLabel="⇧" android:keyWidth="15%p"
-            android:isModifier="true" android:isSticky="true" android:sticky="true" />
+              <Key android:codes="-1" android:keyLabel="⇧" android:keyWidth="15%p"
+            android:isModifier="true" android:isSticky="true" />
         <Key android:codes="122" android:keyLabel="z" />
         <Key android:codes="120" android:keyLabel="x" />
         <Key android:codes="99" android:keyLabel="c" />
