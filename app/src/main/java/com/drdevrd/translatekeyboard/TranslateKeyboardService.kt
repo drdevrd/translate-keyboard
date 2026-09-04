@@ -1,12 +1,15 @@
 package com.drdevrd.translatekeyboard
 
+import android.Manifest
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.inputmethodservice.InputMethodService
 import android.inputmethodservice.Keyboard
 import android.inputmethodservice.KeyboardView
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -14,6 +17,7 @@ import android.widget.Button
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 
 class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardActionListener {
 
@@ -45,6 +49,7 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
     private var openAi: OpenAiTranslator? = null
     private var whisper: WhisperTranscriber? = null
     private lateinit var voiceDictation: VoiceDictation
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private var caps = false
     private var usingSymbols = false
@@ -116,10 +121,12 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
             getSharedPreferences(Prefs.NAME, MODE_PRIVATE).edit()
                 .putString(Prefs.TARGET_LANG, targetLang).apply()
             updateLangButtonLabel()
+            // Re-translate immediately if there's text, so switching language is visibly useful.
+            if (currentSentence().isNotBlank()) performTranslate()
         }
 
         translateNowButton.setOnClickListener {
-            mainHandler.removeCallbacks(translateRunnable ?: Runnable {})
+            translateRunnable?.let { r -> mainHandler.removeCallbacks(r) }
             performTranslate()
         }
 
@@ -154,6 +161,7 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
         if (voiceDictation.isRecording) {
             voiceDictation.stopRecording()
             micButton.text = getString(R.string.mic_icon)
+            releaseWakeLock()
         }
     }
 
@@ -289,10 +297,26 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
         mainHandler.postDelayed(r, TRANSLATE_DEBOUNCE_MS)
     }
 
+    /**
+     * Returns the sentence that should be translated right now: the one the
+     * cursor is currently inside, OR — if a sentence was just finished with
+     * . ? ! (cursor sitting right after it, possibly after a trailing space)
+     * — that just-finished sentence, punctuation included.
+     */
     private fun currentSentence(): String {
         val ic = currentInputConnection ?: return ""
-        val before = ic.getTextBeforeCursor(200, 0)?.toString() ?: ""
-        val lastBreak = before.lastIndexOfAny(charArrayOf('.', '?', '!', '\n'))
+        val before = ic.getTextBeforeCursor(500, 0)?.toString() ?: ""
+        if (before.isBlank()) return ""
+
+        val delimiters = charArrayOf('.', '?', '!', '\n')
+
+        var trimmedEnd = before.length
+        while (trimmedEnd > 0 && before[trimmedEnd - 1] == ' ') trimmedEnd--
+        val justFinishedSentence = trimmedEnd > 0 && before[trimmedEnd - 1] in delimiters
+
+        val searchLimit = if (justFinishedSentence) trimmedEnd - 1 else before.length
+        val lastBreak = before.substring(0, searchLimit).lastIndexOfAny(delimiters)
+
         return before.substring(lastBreak + 1).trim()
     }
 
@@ -403,9 +427,32 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
 
     // ---- Voice dictation (Whisper) ----
 
+    private fun hasMicPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        @Suppress("DEPRECATION")
+        val wl = pm.newWakeLock(
+            PowerManager.SCREEN_DIM_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE,
+            "TranslateKeyboard:dictation"
+        )
+        wl.setReferenceCounted(false)
+        wl.acquire(60_000L) // safety timeout in case stop() is never reached
+        wakeLock = wl
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+    }
+
     private fun onMicTapped() {
         if (voiceDictation.isRecording) {
             val file = voiceDictation.stopRecording()
+            releaseWakeLock()
             micButton.text = getString(R.string.mic_icon)
             micButton.isEnabled = false
             val client = whisper
@@ -438,14 +485,22 @@ class TranslateKeyboardService : InputMethodService(), KeyboardView.OnKeyboardAc
                 }
             )
         } else {
-            val started = voiceDictation.startRecording()
-            if (started) {
-                micButton.text = getString(R.string.mic_listening)
-            } else {
+            if (!hasMicPermission()) {
                 translationPanel.visibility = View.VISIBLE
                 translationText.text = ""
                 transliterationText.text = ""
                 explanationText.text = "Grant microphone permission in the Translate Keyboard app first."
+                return
+            }
+            val started = voiceDictation.startRecording()
+            if (started) {
+                micButton.text = getString(R.string.mic_listening)
+                acquireWakeLock()
+            } else {
+                translationPanel.visibility = View.VISIBLE
+                translationText.text = ""
+                transliterationText.text = ""
+                explanationText.text = "Couldn't start recording. Try again."
             }
         }
     }
