@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#D4D6DA">
+
+    <!-- Autocorrect suggestion strip -->
+    <HorizontalScrollView
+        android:id="@+id/suggestionScroll"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/suggestionStrip"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical" />
+    </HorizontalScrollView>
+
+    <!-- Translation panel -->
+    <LinearLayout
+        android:id="@+id/translationPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#FFFFFF"
+        android:padding="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/translationText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#111111" />
+
+        <TextView
+            android:id="@+id/transliterationText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textStyle="italic"
+            android:textColor="#555555"
+            android:layout_marginTop="2dp" />
+
+        <TextView
+            android:id="@+id/explanationText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="#777777"
+            android:layout_marginTop="4dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp">
+
+            <Button
+                android:id="@+id/insertButton"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:textSize="12sp"
+                android:text="@string/insert_translation" />
+
+            <Button
+                android:id="@+id/dismissButton"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:textSize="12sp"
+                android:text="@string/dismiss" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Control row: language toggle + manual translate -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:orientation="horizontal"
+        android:background="#C2C5CB">
+
+        <Button
+            android:id="@+id/langToggleButton"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:textAllCaps="false"
+            android:textSize="13sp"
+            android:text="@string/target_hindi" />
+
+        <Button
+            android:id="@+id/translateNowButton"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:textAllCaps="false"
+            android:textSize="13sp"
+            android:text="@string/translate_now" />
+    </LinearLayout>
+
+    <android.inputmethodservice.KeyboardView
+        android:id="@+id/keyboardView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:keyBackground="@drawable/key_background"
+        android:keyTextColor="#000000"
+        android:keyTextSize="20sp"
+        android:shadowColor="#00000000"
+        android:background="#D4D6DA" />
+
+</LinearLayout>
