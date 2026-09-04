@@ -15,6 +15,7 @@
     <string name="mic_section_title">Voice dictation</string>
     <string name="mic_section_hint">The keyboard\'s mic button uses OpenAI Whisper (your API key above) to turn speech into text.</string>
     <string name="grant_mic_permission">Grant microphone permission</string>
+    <string name="mic_granted">Microphone: granted \u2713</string>
     <string name="mic_icon">\uD83C\uDFA4</string>
     <string name="copy_label">Copy</string>
     <string name="paste_label">Paste</string>
