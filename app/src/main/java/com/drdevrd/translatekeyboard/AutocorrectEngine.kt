@@ -1,29 +1,74 @@
-<resources>
-    <string name="app_name">Translate Keyboard</string>
-    <string name="target_hindi">Hindi \u2192</string>
-    <string name="target_tamil">Tamil \u2192</string>
-    <string name="translate_now">Translate now</string>
-    <string name="insert_translation">Insert</string>
-    <string name="dismiss">Dismiss</string>
-    <string name="from_clipboard">\u2192 English</string>
-    <string name="settings_title">Translate Keyboard Setup</string>
-    <string name="api_key_hint">OpenAI API key (sk-...)</string>
-    <string name="save">Save</string>
-    <string name="saved">Saved.</string>
-    <string name="live_translate_label">Live translate while typing</string>
-    <string name="live_translate_hint">When on, translation updates automatically as you pause typing or hit . ? ! \u2014 in addition to the manual "Translate now" button. When off, only the button triggers it.</string>
-    <string name="mic_section_title">Voice dictation</string>
-    <string name="mic_section_hint">The keyboard\'s mic button uses OpenAI Whisper (your API key above) to turn speech into text.</string>
-    <string name="grant_mic_permission">Grant microphone permission</string>
-    <string name="mic_granted">Microphone: granted \u2713</string>
-    <string name="mic_not_granted">Microphone: not granted yet</string>
-    <string name="mic_icon">\uD83C\uDFA4</string>
-    <string name="copy_label">Copy</string>
-    <string name="paste_label">Paste</string>
-    <string name="select_all_label">All</string>
-    <string name="clear_all_label">Clear</string>
-    <string name="undo_icon">\u21B6</string>
-    <string name="redo_icon">\u21B7</string>
-    <string name="mic_listening">\u23F9</string>
-    <string name="setup_instructions">1. Paste your OpenAI API key below, choose live-translate on/off, and tap Save.\n2. Go to Settings \u2192 System \u2192 Languages &amp; input \u2192 On-screen keyboard \u2192 Manage keyboards, and enable Translate Keyboard.\n3. Switch to it from any text field using the keyboard-switch icon or the globe key on the keyboard itself.</string>
-</resources>
+package com.drdevrd.translatekeyboard
+
+import android.content.Context
+import java.io.BufferedReader
+import java.io.InputStreamReader
+
+/**
+ * Small on-device autocorrect: bundled English word list + edit-distance
+ * lookup, grouped by first letter so we only score a manageable subset.
+ */
+class AutocorrectEngine(context: Context) {
+
+    private val wordsByFirstLetter: Map<Char, List<String>>
+    private val wordSet: HashSet<String>
+
+    init {
+        val all = ArrayList<String>()
+        context.assets.open("words_en.txt").use { input ->
+            BufferedReader(InputStreamReader(input)).forEachLine { line ->
+                val w = line.trim()
+                if (w.isNotEmpty()) all.add(w)
+            }
+        }
+        wordsByFirstLetter = all.groupBy { it[0] }
+        wordSet = all.toHashSet()
+    }
+
+    fun isKnown(word: String): Boolean = wordSet.contains(word.lowercase())
+
+    /** Returns up to [max] suggestions ordered by closeness, best first. */
+    fun suggest(word: String, max: Int = 3): List<String> {
+        val lower = word.lowercase()
+        if (lower.length < 2) return emptyList()
+        if (wordSet.contains(lower)) return listOf(lower)
+
+        val candidates = wordsByFirstLetter[lower[0]] ?: return emptyList()
+        return candidates
+            .asSequence()
+            .map { it to editDistance(lower, it) }
+            .filter { it.second <= 2 }
+            .sortedBy { it.second }
+            .take(max)
+            .map { it.first }
+            .toList()
+    }
+
+    /** Best single suggestion if it's a confident (distance-1) fix; else null. */
+    fun autoFix(word: String): String? {
+        val lower = word.lowercase()
+        if (wordSet.contains(lower) || lower.length < 3) return null
+        val candidates = wordsByFirstLetter[lower[0]] ?: return null
+        val best = candidates
+            .asSequence()
+            .map { it to editDistance(lower, it) }
+            .minByOrNull { it.second } ?: return null
+        return if (best.second == 1) best.first else null
+    }
+
+    private fun editDistance(a: String, b: String): Int {
+        val dp = Array(a.length + 1) { IntArray(b.length + 1) }
+        for (i in 0..a.length) dp[i][0] = i
+        for (j in 0..b.length) dp[0][j] = j
+        for (i in 1..a.length) {
+            for (j in 1..b.length) {
+                dp[i][j] = if (a[i - 1] == b[j - 1]) {
+                    dp[i - 1][j - 1]
+                } else {
+                    1 + minOf(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+                }
+            }
+        }
+        return dp[a.length][b.length]
+    }
+}
