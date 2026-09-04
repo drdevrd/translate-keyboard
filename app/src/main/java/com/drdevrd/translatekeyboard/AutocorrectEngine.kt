@@ -11,6 +11,7 @@ import java.io.InputStreamReader
 class AutocorrectEngine(context: Context) {
 
     private val wordsByFirstLetter: Map<Char, List<String>>
+    private val wordSet: HashSet<String>
 
     init {
         val all = ArrayList<String>()
