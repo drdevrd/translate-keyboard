@@ -11,6 +11,7 @@ import java.io.InputStreamReader
 class AutocorrectEngine(context: Context) {
 
     private val wordsByFirstLetter: Map<Char, List<String>>
+    private val wordSet: HashSet<String>
 
     init {
         val all = ArrayList<String>()
@@ -23,8 +24,6 @@ class AutocorrectEngine(context: Context) {
         wordsByFirstLetter = all.groupBy { it[0] }
         wordSet = all.toHashSet()
     }
-
-    private val wordSet: HashSet<String>
 
     fun isKnown(word: String): Boolean = wordSet.contains(word.lowercase())
 
